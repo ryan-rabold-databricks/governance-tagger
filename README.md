@@ -87,7 +87,7 @@ governance-tagger/
 ├── app.py                 # FastAPI entry point (lifespan + SPA mount)
 ├── server/
 │   ├── config.py          # auth helpers + env config
-│   ├── security_log.py    # reusable two-tier audit logger
+│   ├── audit_logger/      # reusable two-tier audit logger (package)
 │   ├── uc.py              # thin Unity Catalog accessor
 │   └── routes/api.py      # /api/* HTTP routes
 ├── frontend/              # React + Vite SPA (source)
@@ -99,7 +99,6 @@ governance-tagger/
 │       ├── App.tsx        # single-page UI
 │       ├── main.tsx       # React root
 │       └── styles.css     # Databricks-styled CSS
-└── screenshots/           # demo screenshots from the verification run
 ```
 
 ## See also

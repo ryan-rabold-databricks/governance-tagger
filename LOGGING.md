@@ -5,7 +5,7 @@
 
 This document describes a centralized, app-agnostic security-logging
 pattern for Databricks Apps. The implementation lives in
-`server/security_log.py`. Drop that file into any other Databricks App,
+`server/audit_logger/`. Drop that file into any other Databricks App,
 set `APP_NAME`, grant the SP write on the audit table, and you have the
 same telemetry pipeline with zero additional work.
 
@@ -203,7 +203,7 @@ LIMIT 200;
 
 ## How to use this in another app
 
-1. **Copy `server/security_log.py`** into your new project.
+1. **Copy `server/audit_logger/`** into your new project.
 2. **Set the env vars** in your app's `app.yaml`:
    ```yaml
    env:

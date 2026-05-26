@@ -1,25 +1,35 @@
 """Reusable security logging module for Databricks Apps.
 
+DROP-IN MODULE — no app-specific imports. All configuration is read from
+environment variables so every Databricks App can use this without
+modification.
+
 Two-tier design:
 
   Tier 1 — stdout/stderr structured JSON
-    Every event is written as a single JSON line to stdout (info/success)
-    or stderr (security-relevant failure). Databricks Apps captures these
-    automatically and exposes them in the Apps UI (the ``/logz`` endpoint).
-    This is ephemeral but immediate — perfect for live debugging.
+    Every event is a single JSON line. Successes go to stdout; security-
+    relevant failures go to stderr. Databricks Apps captures both and
+    exposes them in the Apps UI (`/logz`). Ephemeral but immediate.
 
-  Tier 2 — UC Delta table at ``<catalog>.app_security_logs.events``
+  Tier 2 — UC Delta table at <AUDIT_CATALOG>.<AUDIT_SCHEMA>.<AUDIT_TABLE>
     Every event is also enqueued for async write to a centralized UC Delta
-    table via the SQL warehouse resource. This is durable, queryable, and
-    governed — exactly what auditors and security teams want.
+    table via a SQL warehouse. Durable, queryable, governed. The same
+    table serves every Databricks App in the workspace — each row is
+    stamped with `app_name` so writers don't collide.
 
-Both tiers are fed from the same ``log_event`` call so the two destinations
+Both tiers are fed from the same `log_event` call so the two destinations
 can never drift out of sync.
 
-Drop this module into any other Databricks App by:
-  1. Copying ``security_log.py`` into your project.
-  2. Setting the ``APP_NAME`` env var.
-  3. Granting your service principal write access to the audit table.
+Environment variables
+---------------------
+    APP_NAME                  (required) Identifies the app in the audit table.
+    DATABRICKS_WAREHOUSE_ID   (required) Set via app.yaml resources block.
+    AUDIT_CATALOG             Default: app_audit
+    AUDIT_SCHEMA              Default: app_security_logs
+    AUDIT_TABLE               Default: events
+
+SDK auth env vars (DATABRICKS_HOST, DATABRICKS_CLIENT_ID,
+DATABRICKS_CLIENT_SECRET) are injected automatically by the Apps runtime.
 """
 
 from __future__ import annotations
@@ -34,38 +44,77 @@ import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+from enum import Enum
 from typing import Any, Optional
 
 from databricks import sql as dbsql
-
-from .config import (
-    APP_NAME,
-    AUDIT_CATALOG,
-    AUDIT_FQN,
-    AUDIT_SCHEMA,
-    AUDIT_TABLE,
-    IS_DATABRICKS_APP,
-    WAREHOUSE_ID,
-    get_workspace_host,
-    get_sp_client,
-)
+from databricks.sdk import WorkspaceClient
 
 
 # ---------------------------------------------------------------------------
-# Event schema
+# Config (env-var driven, no per-app imports)
 # ---------------------------------------------------------------------------
+
+APP_NAME = os.environ.get("APP_NAME", "unnamed-app")
+AUDIT_CATALOG = os.environ.get("AUDIT_CATALOG", "app_audit")
+AUDIT_SCHEMA = os.environ.get("AUDIT_SCHEMA", "app_security_logs")
+AUDIT_TABLE = os.environ.get("AUDIT_TABLE", "events")
+AUDIT_FQN = f"{AUDIT_CATALOG}.{AUDIT_SCHEMA}.{AUDIT_TABLE}"
+WAREHOUSE_ID = os.environ.get("DATABRICKS_WAREHOUSE_ID")
+
+
+def _workspace_host() -> str:
+    host = os.environ.get("DATABRICKS_HOST", "")
+    if host and not host.startswith("http"):
+        host = f"https://{host}"
+    if host:
+        return host
+    return WorkspaceClient().config.host
+
+
+def _sp_client() -> WorkspaceClient:
+    """WorkspaceClient using the app's service principal credentials.
+
+    Inside an App the SDK auto-discovers DATABRICKS_CLIENT_ID / _SECRET.
+    Locally it falls back to the developer's CLI profile.
+    """
+    if os.environ.get("DATABRICKS_CLIENT_ID"):
+        return WorkspaceClient()
+    profile = os.environ.get("DATABRICKS_PROFILE")
+    return WorkspaceClient(profile=profile) if profile else WorkspaceClient()
+
+
+# ---------------------------------------------------------------------------
+# Event schema (matches the central table DDL)
+# ---------------------------------------------------------------------------
+
+
+class EventType(str, Enum):
+    """Canonical event types written to the audit table.
+
+    Subclassing ``str`` means an ``EventType`` member is also a string —
+    JSON serialization, the UC Delta INSERT, and set-membership checks
+    against raw strings all keep working. Callers can still pass a raw
+    string if they need to extend the taxonomy at runtime.
+    """
+
+    APP_LOAD = "app_load"
+    API_CALL = "api_call"
+    DATA_ACCESS = "data_access"
+    DATA_EDIT = "data_edit"
+    PERMISSION_DENIED = "permission_denied"
+    AUTH_ERROR = "auth_error"
+    SUSPICIOUS_ACTIVITY = "suspicious_activity"
 
 
 @dataclass
 class SecurityEvent:
-    """Canonical security event — same shape goes to stdout and to UC."""
-
     event_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     event_timestamp: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
     app_name: str = APP_NAME
-    event_type: str = "api_call"
+    event_type: str = EventType.API_CALL
     outcome: str = "success"
     user_email: Optional[str] = None
     user_id: Optional[str] = None
@@ -82,45 +131,52 @@ class SecurityEvent:
     error_message: Optional[str] = None
     details: Optional[dict] = None
 
+    def __post_init__(self) -> None:
+        # databricks-sql-connector's parameter binder checks ``type(v) is str``
+        # (not isinstance), so an ``EventType`` member — which subclasses str —
+        # is rejected at INSERT time. Coerce any Enum to its raw string here so
+        # the row built for Tier 2 always has a plain ``str``.
+        if isinstance(self.event_type, Enum):
+            self.event_type = self.event_type.value
+
     def to_json_line(self) -> str:
         d = asdict(self)
-        # Details is a dict; JSON-encode it so it stays on one line and is
-        # also storable as a STRING column in Delta.
         if d.get("details") is not None:
             d["details"] = json.dumps(d["details"], default=str, sort_keys=True)
         return json.dumps(d, default=str)
 
 
 # ---------------------------------------------------------------------------
-# Tier 1: stdout/stderr JSON logger
+# Tier 1: stdout/stderr JSON
 # ---------------------------------------------------------------------------
 
-
 _FAIL_OUTCOMES = {"denied", "failure", "error"}
-_SECURITY_TYPES = {"permission_denied", "auth_error", "suspicious_activity"}
+_SECURITY_TYPES = {
+    EventType.PERMISSION_DENIED,
+    EventType.AUTH_ERROR,
+    EventType.SUSPICIOUS_ACTIVITY,
+}
 
 
 class _JsonFormatter(logging.Formatter):
-    """Pass-through formatter — message is already a JSON string."""
-
-    def format(self, record: logging.LogRecord) -> str:  # noqa: D401
+    def format(self, record: logging.LogRecord) -> str:
         return record.getMessage()
 
 
 def _build_logger() -> logging.Logger:
-    logger = logging.getLogger("governance.audit")
+    logger = logging.getLogger("audit_logger")
     if logger.handlers:
         return logger
     logger.setLevel(logging.INFO)
-    out_handler = logging.StreamHandler(sys.stdout)
-    out_handler.setLevel(logging.INFO)
-    out_handler.setFormatter(_JsonFormatter())
-    out_handler.addFilter(lambda r: r.levelno < logging.ERROR)
-    err_handler = logging.StreamHandler(sys.stderr)
-    err_handler.setLevel(logging.ERROR)
-    err_handler.setFormatter(_JsonFormatter())
-    logger.addHandler(out_handler)
-    logger.addHandler(err_handler)
+    out = logging.StreamHandler(sys.stdout)
+    out.setLevel(logging.INFO)
+    out.setFormatter(_JsonFormatter())
+    out.addFilter(lambda r: r.levelno < logging.ERROR)
+    err = logging.StreamHandler(sys.stderr)
+    err.setLevel(logging.ERROR)
+    err.setFormatter(_JsonFormatter())
+    logger.addHandler(out)
+    logger.addHandler(err)
     logger.propagate = False
     return logger
 
@@ -134,13 +190,6 @@ _logger = _build_logger()
 
 
 class _AuditWriter:
-    """Fire-and-forget UC writer with a bounded queue.
-
-    Logging must NEVER block the request thread. We push events onto a
-    bounded ``queue.Queue`` (drop-on-overflow with a stderr warning) and a
-    background daemon thread flushes them to UC.
-    """
-
     QUEUE_SIZE = 1000
     BATCH_MAX = 50
     BATCH_INTERVAL_SEC = 2.0
@@ -153,20 +202,20 @@ class _AuditWriter:
 
     def start(self) -> None:
         if not self._enabled:
-            _logger.warning(
+            sys.stderr.write(
                 json.dumps(
                     {
                         "audit_writer": "disabled",
-                        "reason": "DATABRICKS_WAREHOUSE_ID env var not set",
+                        "reason": "DATABRICKS_WAREHOUSE_ID not set",
+                        "app_name": APP_NAME,
                     }
                 )
+                + "\n"
             )
             return
         if self._thread and self._thread.is_alive():
             return
-        self._thread = threading.Thread(
-            target=self._run, name="audit-writer", daemon=True
-        )
+        self._thread = threading.Thread(target=self._run, name="audit-writer", daemon=True)
         self._thread.start()
 
     def stop(self) -> None:
@@ -180,18 +229,16 @@ class _AuditWriter:
         try:
             self._queue.put_nowait(event)
         except queue.Full:
-            # Don't block — drop and shout to stderr.
             sys.stderr.write(
                 json.dumps(
                     {
                         "audit_writer": "queue_full_drop",
                         "event_id": event.event_id,
+                        "app_name": APP_NAME,
                     }
                 )
                 + "\n"
             )
-
-    # -- background loop ---------------------------------------------------
 
     def _run(self) -> None:
         while not self._stop.is_set():
@@ -209,29 +256,27 @@ class _AuditWriter:
                 continue
             try:
                 self._flush(batch)
-            except Exception as exc:  # noqa: BLE001
-                # Logger to stderr — never re-raise out of the daemon.
+            except Exception as exc:
                 sys.stderr.write(
                     json.dumps(
                         {
                             "audit_writer": "flush_failed",
                             "error": str(exc),
                             "batch_size": len(batch),
+                            "app_name": APP_NAME,
                         }
                     )
                     + "\n"
                 )
 
     def _flush(self, batch: list[SecurityEvent]) -> None:
-        host = get_workspace_host().replace("https://", "").replace("http://", "")
+        host = _workspace_host().replace("https://", "").replace("http://", "")
         http_path = f"/sql/1.0/warehouses/{WAREHOUSE_ID}"
-        # Re-use the SP auth from the SDK so we don't need to deal with PAT.
-        cfg = get_sp_client().config
+        cfg = _sp_client().config
 
         def _credential_provider():
             def _inner():
-                headers = cfg.authenticate()
-                return headers  # already dict like {"Authorization": "Bearer ..."}
+                return cfg.authenticate()
             return _inner
 
         with dbsql.connect(
@@ -246,7 +291,7 @@ class _AuditWriter:
                         (
                             e.event_id,
                             e.event_timestamp,
-                            e.event_timestamp[:10],  # event_date partition
+                            e.event_timestamp[:10],
                             e.app_name,
                             e.event_type,
                             e.outcome,
@@ -269,9 +314,7 @@ class _AuditWriter:
                         )
                     )
                 placeholders = ",".join(
-                    [
-                        "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-                    ]
+                    ["(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"]
                     * len(rows)
                 )
                 flat = [v for row in rows for v in row]
@@ -295,41 +338,22 @@ _writer = _AuditWriter()
 
 
 def start() -> None:
-    """Start the background audit writer thread. Call once at app startup."""
+    """Start the background audit writer. Call once at app startup."""
     _writer.start()
 
 
 def stop() -> None:
-    """Stop the background writer cleanly at shutdown."""
+    """Stop the background writer cleanly. Call once at app shutdown."""
     _writer.stop()
 
 
 def log_event(**kwargs: Any) -> SecurityEvent:
-    """Log a security event to both tiers.
-
-    Example::
-
-        log_event(
-            event_type="data_edit",
-            outcome="success",
-            user_email=ctx.email,
-            catalog_name="app_audit",
-            schema_name="clinical",
-            table_name="patient_enrollment",
-            action="update_description",
-            before_value=old,
-            after_value=new,
-        )
-    """
+    """Log a security event to both tiers (stdout/stderr + UC Delta)."""
     event = SecurityEvent(**kwargs)
-
-    # Tier 1 — stdout / stderr.
     line = event.to_json_line()
     if event.outcome in _FAIL_OUTCOMES or event.event_type in _SECURITY_TYPES:
         _logger.error(line)
     else:
         _logger.info(line)
-
-    # Tier 2 — UC Delta via background writer.
     _writer.submit(event)
     return event

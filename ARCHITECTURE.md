@@ -19,9 +19,10 @@ governance-tagger/
 │   ├── __init__.py
 │   ├── config.py                   IS_DATABRICKS_APP detection, SP and OBO
 │   │                               WorkspaceClient factories, UserContext.
-│   ├── security_log.py             Two-tier audit logger. Public API:
-│   │                               start(), stop(), log_event(...). Drop
-│   │                               this file into any other app to reuse.
+│   ├── audit_logger/               Two-tier audit logger (Python
+│   │                               package). Public API: start(), stop(),
+│   │                               log_event(...), SecurityEvent, EventType.
+│   │                               Drop into any other Databricks App to reuse.
 │   ├── uc.py                       Thin UC accessor: list_catalogs,
 │   │                               list_schemas, list_tables, describe_table,
 │   │                               update_table_comment, update_column_comment,
@@ -53,7 +54,7 @@ flowchart LR
     subgraph App[Databricks App: governance-tagger]
         FE[React SPA<br/>frontend/dist]
         BE[FastAPI<br/>app.py + server/routes]
-        LOG[security_log.py<br/>two-tier audit logger]
+        LOG[audit_logger/<br/>two-tier audit logger]
         FE --> BE
         BE --> LOG
     end

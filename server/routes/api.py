@@ -16,7 +16,7 @@ import uuid
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from .. import security_log, uc
+from .. import audit_logger, uc
 from ..config import (
     UserContext,
     get_sp_client,
@@ -50,7 +50,7 @@ def _validate_identifier(name: str, kind: str, ctx: UserContext) -> None:
     (the per-route success log captures the normal case).
     """
     if not name or len(name) > _IDENTIFIER_MAX_LEN or not _IDENTIFIER_RE.match(name):
-        security_log.log_event(
+        audit_logger.log_event(
             event_type="suspicious_activity",
             outcome="denied",
             action=f"invalid_{kind}",
@@ -134,7 +134,7 @@ class UpdateColumnCommentBody(BaseModel):
 @router.get("/me")
 def whoami(request: Request) -> dict:
     ctx = _user_context(request)
-    security_log.log_event(
+    audit_logger.log_event(
         event_type="app_load",
         outcome="success",
         action="whoami",
@@ -153,7 +153,7 @@ def catalogs(request: Request) -> dict:
         values = uc.list_catalogs()
     except Exception as exc:  # noqa: BLE001
         status, code, etype = _map_error(exc)
-        security_log.log_event(
+        audit_logger.log_event(
             event_type=etype,
             outcome="denied" if status == 403 else "failure",
             action="list_catalogs",
@@ -165,7 +165,7 @@ def catalogs(request: Request) -> dict:
             error_message=str(exc),
         )
         raise HTTPException(status_code=status, detail=str(exc))
-    security_log.log_event(
+    audit_logger.log_event(
         event_type="data_access",
         outcome="success",
         action="list_catalogs",
@@ -186,7 +186,7 @@ def schemas_in_catalog(catalog: str, request: Request) -> dict:
         values = uc.list_schemas(catalog)
     except Exception as exc:  # noqa: BLE001
         status, code, etype = _map_error(exc)
-        security_log.log_event(
+        audit_logger.log_event(
             event_type=etype,
             outcome="denied" if status == 403 else "failure",
             action="list_schemas",
@@ -199,7 +199,7 @@ def schemas_in_catalog(catalog: str, request: Request) -> dict:
             error_message=str(exc),
         )
         raise HTTPException(status_code=status, detail=str(exc))
-    security_log.log_event(
+    audit_logger.log_event(
         event_type="data_access",
         outcome="success",
         action="list_schemas",
@@ -222,7 +222,7 @@ def tables_in_schema(catalog: str, schema: str, request: Request) -> dict:
         items = uc.list_tables(catalog, schema)
     except Exception as exc:  # noqa: BLE001
         status, code, etype = _map_error(exc)
-        security_log.log_event(
+        audit_logger.log_event(
             event_type=etype,
             outcome="denied" if status == 403 else "failure",
             action="list_tables",
@@ -236,7 +236,7 @@ def tables_in_schema(catalog: str, schema: str, request: Request) -> dict:
             error_message=str(exc),
         )
         raise HTTPException(status_code=status, detail=str(exc))
-    security_log.log_event(
+    audit_logger.log_event(
         event_type="data_access",
         outcome="success",
         action="list_tables",
@@ -267,7 +267,7 @@ def get_table(catalog: str, schema: str, table: str, request: Request) -> dict:
         info = uc.describe_table(client, catalog, schema, table)
     except Exception as exc:  # noqa: BLE001
         status, code, etype = _map_error(exc)
-        security_log.log_event(
+        audit_logger.log_event(
             event_type=etype,
             outcome="denied" if status == 403 else "failure",
             action="read_metadata",
@@ -282,7 +282,7 @@ def get_table(catalog: str, schema: str, table: str, request: Request) -> dict:
             error_message=str(exc),
         )
         raise HTTPException(status_code=status, detail=str(exc))
-    security_log.log_event(
+    audit_logger.log_event(
         event_type="data_access",
         outcome="success",
         action="read_metadata",
@@ -321,7 +321,7 @@ def put_table_description(
         old_comment = before["comment"]
     except Exception as exc:  # noqa: BLE001
         status, code, etype = _map_error(exc)
-        security_log.log_event(
+        audit_logger.log_event(
             event_type=etype,
             outcome="denied" if status == 403 else "failure",
             action="update_description",
@@ -341,7 +341,7 @@ def put_table_description(
         uc.update_table_comment(client, catalog, schema, table, body.comment)
     except Exception as exc:  # noqa: BLE001
         status, code, etype = _map_error(exc)
-        security_log.log_event(
+        audit_logger.log_event(
             event_type=etype,
             outcome="denied" if status == 403 else "failure",
             action="update_description",
@@ -359,7 +359,7 @@ def put_table_description(
         )
         raise HTTPException(status_code=status, detail=str(exc))
 
-    security_log.log_event(
+    audit_logger.log_event(
         event_type="data_edit",
         outcome="success",
         action="update_description",
@@ -404,7 +404,7 @@ def put_column_comment(
                 break
     except Exception as exc:  # noqa: BLE001
         status, code, etype = _map_error(exc)
-        security_log.log_event(
+        audit_logger.log_event(
             event_type=etype,
             outcome="denied" if status == 403 else "failure",
             action="update_column_comment",
@@ -425,7 +425,7 @@ def put_column_comment(
         uc.update_column_comment(client, catalog, schema, table, body.column, body.comment)
     except Exception as exc:  # noqa: BLE001
         status, code, etype = _map_error(exc)
-        security_log.log_event(
+        audit_logger.log_event(
             event_type=etype,
             outcome="denied" if status == 403 else "failure",
             action="update_column_comment",
@@ -444,7 +444,7 @@ def put_column_comment(
         )
         raise HTTPException(status_code=status, detail=str(exc))
 
-    security_log.log_event(
+    audit_logger.log_event(
         event_type="data_edit",
         outcome="success",
         action="update_column_comment",
@@ -469,7 +469,7 @@ def my_audit_trail(request: Request, limit: int = 25) -> dict:
         rows = uc.list_recent_audit_events(ctx.email, limit=limit)
     except Exception as exc:  # noqa: BLE001
         status, code, etype = _map_error(exc)
-        security_log.log_event(
+        audit_logger.log_event(
             event_type=etype,
             outcome="failure",
             action="read_own_audit",

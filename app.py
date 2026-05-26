@@ -13,15 +13,15 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from server import security_log
+from server import audit_logger
 from server.routes.api import router as api_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    security_log.start()
+    audit_logger.start()
     yield
-    security_log.stop()
+    audit_logger.stop()
 
 
 app = FastAPI(title="Governance Tagger", lifespan=lifespan)
