@@ -1,0 +1,14 @@
+# Databricks App resource. Environment variables live in ../app.yaml
+# (the runtime config the app pod reads); the SQL warehouse the app
+# attaches to is declared in ../manifest.yaml as a resource spec the
+# customer wires up in the UI on first deploy.
+#
+# source_code_path is `..` because the app sources live at the repo
+# root, not in a `src/app/` subdir.
+
+resources:
+  apps:
+    governance_tagger:
+      name: ${var.app_name}
+      description: "Curate Unity Catalog table and column descriptions, with centralized two-tier audit logging."
+      source_code_path: ..

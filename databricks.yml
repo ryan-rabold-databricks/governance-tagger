@@ -1,0 +1,30 @@
+# Databricks Asset Bundle definition for the Governance Tagger app.
+#
+# Customers deploying this bundle:
+#  - From the UI: clone this repo as a Git Folder, then deploy the bundle
+#    from the Bundles panel. The `workspace.host` below is unused in that
+#    flow — the workspace context provides it.
+#  - From the CLI: set `workspace.host` to your workspace URL (or remove
+#    the `host:` line entirely if you've configured a default profile in
+#    ~/.databrickscfg), then run `databricks bundle deploy -t dev`.
+#
+# See README.md for the full deploy walkthrough.
+
+bundle:
+  name: governance-tagger
+
+include:
+  - resources/*.yml
+
+variables:
+  app_name:
+    description: "Unique name for the Databricks App resource (must be unique per workspace)."
+    default: "governance-tagger"
+
+targets:
+  dev:
+    default: true
+    mode: development
+    workspace:
+      # Override with your workspace URL for CLI deploys.
+      host: https://<your-workspace>.cloud.databricks.com

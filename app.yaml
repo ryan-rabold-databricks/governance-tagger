@@ -17,5 +17,8 @@ env:
     value: app_security_logs
   - name: AUDIT_TABLE
     value: events
+  # Warehouse is attached via manifest.yaml as a resource the customer
+  # wires up in the App UI on first deploy. `valueFrom` resolves to the
+  # warehouse ID at runtime.
   - name: DATABRICKS_WAREHOUSE_ID
-    value: "<your_warehouse_id>"
+    valueFrom: "sql-warehouse"

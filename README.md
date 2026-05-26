@@ -30,31 +30,50 @@ internals visible. The audience is a domain steward, not a data engineer.
 - **Security teams** who need to monitor for permission denials and
   suspicious patterns without parsing app stdout.
 
-## Deploy from this directory
+## Deploy
+
+This repo is a [Databricks Asset Bundle](https://docs.databricks.com/dev-tools/bundles/index.html).
+Two equivalent ways to deploy it — pick whichever fits your setup.
+
+### Option A — From the Databricks workspace UI (no local tools required)
+
+1. In your Databricks workspace, click **Workspace** in the left sidebar.
+2. Click **+ Add → Git Folder**. Paste the repo URL:
+   `https://github.com/ryan-rabold-databricks/governance-tagger`
+3. Click **Create** — the workspace clones the repo.
+4. Open the cloned folder and click the `databricks.yml` file. A **Bundle**
+   panel appears with **Validate** and **Deploy** buttons. Click **Deploy**
+   and select the `dev` target.
+5. Once the deploy finishes, navigate to **Compute → Apps → governance-tagger**.
+   You'll be prompted to attach a **SQL warehouse** (the `sql-warehouse`
+   resource declared in `manifest.yaml`). Pick any warehouse the app SP
+   has `CAN_USE` on.
+6. Click **Start** on the app.
+
+### Option B — From the CLI (Databricks CLI v0.239.0+)
 
 ```bash
-# 1. Authenticate
-databricks auth login --profile <your_databricks_profile>
+# 1. Clone locally
+git clone https://github.com/ryan-rabold-databricks/governance-tagger
+cd governance-tagger
 
-# 2. Build the React frontend (output goes to frontend/dist)
+# 2. Edit databricks.yml: set workspace.host to your workspace URL,
+#    or remove the line entirely if you've configured a default profile.
+
+# 3. Validate + deploy
+databricks bundle validate -t dev
+databricks bundle deploy -t dev
+
+# 4. Start the app (DAB doesn't auto-start Apps resources)
+databricks bundle run governance_tagger -t dev
+```
+
+The built React SPA (`frontend/dist/`) is committed to the repo so neither
+flow requires `npm`. If you edit the frontend source, rebuild before
+deploying:
+
+```bash
 cd frontend && npm install && npm run build && cd ..
-
-# 3. Sync to the workspace (skip node_modules, venv, frontend sources)
-databricks sync . /Workspace/Users/$USER/governance-tagger \
-  --exclude node_modules --exclude .venv --exclude __pycache__ \
-  --exclude .git --exclude frontend/src --exclude frontend/public \
-  --exclude frontend/node_modules --full \
-  --profile <your_databricks_profile>
-
-# 4. Create the app (first time only)
-databricks apps create governance-tagger \
-  --description "Governance team UI to curate UC table and column descriptions, with centralized audit logging." \
-  --profile <your_databricks_profile>
-
-# 5. Deploy
-databricks apps deploy governance-tagger \
-  --source-code-path /Workspace/Users/$USER/governance-tagger \
-  --profile <your_databricks_profile>
 ```
 
 ## Required resources & grants
@@ -82,23 +101,29 @@ governance-tagger/
 ├── README.md              # this file
 ├── ARCHITECTURE.md        # diagrams + components
 ├── LOGGING.md             # the reusable security-logging pattern
-├── app.yaml               # Databricks App runtime config
+├── LICENSE                # Apache 2.0
+├── databricks.yml         # Databricks Asset Bundle root
+├── resources/
+│   └── governance_tagger.app.yml   # App resource definition
+├── manifest.yaml          # App manifest (SQL warehouse resource_spec)
+├── app.yaml               # App runtime config (command, env vars)
 ├── requirements.txt       # Python deps
 ├── app.py                 # FastAPI entry point (lifespan + SPA mount)
 ├── server/
 │   ├── config.py          # auth helpers + env config
-│   ├── audit_logger/      # reusable two-tier audit logger (package)
+│   ├── audit_logger/      # reusable two-tier audit logger (drop-in package)
 │   ├── uc.py              # thin Unity Catalog accessor
 │   └── routes/api.py      # /api/* HTTP routes
-├── frontend/              # React + Vite SPA (source)
-│   ├── package.json
-│   ├── vite.config.ts
-│   ├── tsconfig.json
-│   ├── index.html
-│   └── src/
-│       ├── App.tsx        # single-page UI
-│       ├── main.tsx       # React root
-│       └── styles.css     # Databricks-styled CSS
+└── frontend/              # React + Vite SPA
+    ├── package.json
+    ├── vite.config.ts
+    ├── tsconfig.json
+    ├── index.html
+    ├── src/               # editable source
+    │   ├── App.tsx
+    │   ├── main.tsx
+    │   └── styles.css
+    └── dist/              # built bundle (committed so DAB deploy needs no npm)
 ```
 
 ## See also
