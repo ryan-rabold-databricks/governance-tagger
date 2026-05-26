@@ -44,11 +44,17 @@ Two equivalent ways to deploy it — pick whichever fits your setup.
 4. Open the cloned folder and click the `databricks.yml` file. A **Bundle**
    panel appears with **Validate** and **Deploy** buttons. Click **Deploy**
    and select the `dev` target.
-5. Once the deploy finishes, navigate to **Compute → Apps → governance-tagger**.
-   You'll be prompted to attach a **SQL warehouse** (the `sql-warehouse`
-   resource declared in `manifest.yaml`). Pick any warehouse the app SP
-   has `CAN_USE` on.
-6. Click **Start** on the app.
+5. Once the bundle deploy finishes, navigate to **Compute → Apps → governance-tagger**.
+   The app appears in **Stopped** state with an unbound `sql-warehouse`
+   resource. Open the **Resources** tab (or **App Settings → Resources**,
+   depending on workspace version) and bind `sql-warehouse` to any
+   warehouse the app SP has `CAN_USE` on. If the binding UI doesn't
+   appear, click **Edit** on the app and add a SQL warehouse resource
+   named `sql-warehouse` manually — the env-var reference in `app.yaml`
+   is `valueFrom: "sql-warehouse"`, so the resource name must match
+   exactly.
+6. Click **Start** on the app. First start can take 1–2 minutes while
+   the workspace materializes the env vars and installs `requirements.txt`.
 
 ### Option B — From the CLI (Databricks CLI v0.239.0+)
 
@@ -78,8 +84,11 @@ cd frontend && npm install && npm run build && cd ..
 
 ## Required resources & grants
 
-The app needs a SQL warehouse resource (attached via the App UI or `apps
-update` API) and these UC grants on the app's service principal:
+The app needs a SQL warehouse resource (bound in the App UI's Resources
+tab, or via the `apps update` API) and these UC grants on the app's
+service principal. Binding the warehouse via the Resources tab
+auto-grants `CAN_USE` on the warehouse to the SP, but the UC grants
+below still need to be applied manually:
 
 ```sql
 -- Replace <SP_CLIENT_ID> with the value of service_principal_client_id from

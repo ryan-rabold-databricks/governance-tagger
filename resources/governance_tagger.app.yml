@@ -1,7 +1,8 @@
 # Databricks App resource. Environment variables live in ../app.yaml
-# (the runtime config the app pod reads); the SQL warehouse the app
-# attaches to is declared in ../manifest.yaml as a resource spec the
-# customer wires up in the UI on first deploy.
+# (the runtime config the app pod reads). The SQL warehouse resource
+# is declared here (and mirrored in ../manifest.yaml for non-DAB
+# deploys) so the bundle deploy creates an unbound `sql-warehouse`
+# resource that the customer binds in the App's Resources tab.
 #
 # source_code_path is `..` because the app sources live at the repo
 # root, not in a `src/app/` subdir.
@@ -12,3 +13,8 @@ resources:
       name: ${var.app_name}
       description: "Curate Unity Catalog table and column descriptions, with centralized two-tier audit logging."
       source_code_path: ..
+      resources:
+        - name: sql-warehouse
+          description: "SQL warehouse used by the app service principal for UC reads/writes and audit-table inserts."
+          sql_warehouse:
+            permission: CAN_USE
