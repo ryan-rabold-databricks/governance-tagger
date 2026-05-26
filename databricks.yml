@@ -20,6 +20,10 @@ variables:
   app_name:
     description: "Unique name for the Databricks App resource (must be unique per workspace)."
     default: "governance-tagger"
+  sql_warehouse_id:
+    description: "ID of an existing SQL warehouse the app SP has (or will be granted) CAN_USE on. Find it in SQL Warehouses → click the warehouse → the ID is in the URL (e.g. `5a3e1a5cfdf513f1`) or in the warehouse details panel."
+    # No default — caller must supply: `--var sql_warehouse_id=<id>` (CLI)
+    # or via the Variables tab in the workspace Bundle panel.
 
 targets:
   dev:

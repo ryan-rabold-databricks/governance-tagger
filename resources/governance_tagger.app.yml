@@ -1,8 +1,9 @@
 # Databricks App resource. Environment variables live in ../app.yaml
 # (the runtime config the app pod reads). The SQL warehouse resource
-# is declared here (and mirrored in ../manifest.yaml for non-DAB
-# deploys) so the bundle deploy creates an unbound `sql-warehouse`
-# resource that the customer binds in the App's Resources tab.
+# is bound at bundle deploy time using the `sql_warehouse_id` bundle
+# variable — DAB requires a concrete warehouse ID at deploy time, so
+# the customer supplies one via `--var sql_warehouse_id=...` (CLI) or
+# the Variables tab in the Bundle panel (workspace UI).
 #
 # source_code_path is `..` because the app sources live at the repo
 # root, not in a `src/app/` subdir.
@@ -17,4 +18,5 @@ resources:
         - name: sql-warehouse
           description: "SQL warehouse used by the app service principal for UC reads/writes and audit-table inserts."
           sql_warehouse:
+            id: ${var.sql_warehouse_id}
             permission: CAN_USE

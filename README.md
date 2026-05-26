@@ -35,6 +35,14 @@ internals visible. The audience is a domain steward, not a data engineer.
 This repo is a [Databricks Asset Bundle](https://docs.databricks.com/dev-tools/bundles/index.html).
 Two equivalent ways to deploy it — pick whichever fits your setup.
 
+### Prerequisite — find your SQL warehouse ID
+
+Both deploy paths need the ID of an existing SQL warehouse. In your
+workspace, go to **SQL Warehouses**, click the warehouse you want to
+use, and copy the ID from the URL or the details panel
+(e.g. `5a3e1a5cfdf513f1`). The app SP will be granted `CAN_USE` on it
+automatically at deploy time.
+
 ### Option A — From the Databricks workspace UI (no local tools required)
 
 1. In your Databricks workspace, click **Workspace** in the left sidebar.
@@ -42,19 +50,12 @@ Two equivalent ways to deploy it — pick whichever fits your setup.
    `https://github.com/ryan-rabold-databricks/governance-tagger`
 3. Click **Create** — the workspace clones the repo.
 4. Open the cloned folder and click the `databricks.yml` file. A **Bundle**
-   panel appears with **Validate** and **Deploy** buttons. Click **Deploy**
-   and select the `dev` target.
-5. Once the bundle deploy finishes, navigate to **Compute → Apps → governance-tagger**.
-   The app appears in **Stopped** state with an unbound `sql-warehouse`
-   resource. Open the **Resources** tab (or **App Settings → Resources**,
-   depending on workspace version) and bind `sql-warehouse` to any
-   warehouse the app SP has `CAN_USE` on. If the binding UI doesn't
-   appear, click **Edit** on the app and add a SQL warehouse resource
-   named `sql-warehouse` manually — the env-var reference in `app.yaml`
-   is `valueFrom: "sql-warehouse"`, so the resource name must match
-   exactly.
-6. Click **Start** on the app. First start can take 1–2 minutes while
-   the workspace materializes the env vars and installs `requirements.txt`.
+   panel appears. Open the **Variables** tab and set
+   `sql_warehouse_id` to the warehouse ID from the prerequisite step.
+5. Click **Deploy** and select the `dev` target.
+6. Once the deploy finishes, navigate to **Compute → Apps → governance-tagger**
+   and click **Start**. First start can take 1–2 minutes while the
+   workspace materializes the env vars and installs `requirements.txt`.
 
 ### Option B — From the CLI (Databricks CLI v0.239.0+)
 
@@ -66,9 +67,9 @@ cd governance-tagger
 # 2. Edit databricks.yml: set workspace.host to your workspace URL,
 #    or remove the line entirely if you've configured a default profile.
 
-# 3. Validate + deploy
-databricks bundle validate -t dev
-databricks bundle deploy -t dev
+# 3. Validate + deploy (supply the warehouse ID via --var)
+databricks bundle validate -t dev --var "sql_warehouse_id=<your-warehouse-id>"
+databricks bundle deploy   -t dev --var "sql_warehouse_id=<your-warehouse-id>"
 
 # 4. Start the app (DAB doesn't auto-start Apps resources)
 databricks bundle run governance_tagger -t dev
@@ -84,11 +85,10 @@ cd frontend && npm install && npm run build && cd ..
 
 ## Required resources & grants
 
-The app needs a SQL warehouse resource (bound in the App UI's Resources
-tab, or via the `apps update` API) and these UC grants on the app's
-service principal. Binding the warehouse via the Resources tab
-auto-grants `CAN_USE` on the warehouse to the SP, but the UC grants
-below still need to be applied manually:
+The bundle attaches a SQL warehouse to the app at deploy time (via the
+`sql_warehouse_id` bundle variable) and auto-grants the app SP
+`CAN_USE` on it. The UC grants below are not auto-managed and must be
+applied manually before the app will function:
 
 ```sql
 -- Replace <SP_CLIENT_ID> with the value of service_principal_client_id from
