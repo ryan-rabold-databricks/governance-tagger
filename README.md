@@ -63,8 +63,13 @@ deployed against and won't work for you unchanged.
 5. Click `databricks.yml` to open the **Bundle** panel, then click
    **Deploy** and select the `dev` target.
 6. Once the deploy finishes, navigate to **Compute → Apps → governance-tagger**
-   and click **Start**. First start can take 1–2 minutes while the
-   workspace materializes the env vars and installs `requirements.txt`.
+   and click **Deploy** on the app to push the source code. When
+   prompted for a **Source code path**, point it to the cloned Git
+   Folder (the directory containing `app.yaml`, e.g.
+   `/Workspace/Users/<your-email>/governance-tagger`).
+7. Once the source-code deploy finishes, click **Start** on the app.
+   First start can take 1–2 minutes while the workspace materializes
+   the env vars and installs `requirements.txt`.
 
 ### Option B — From the CLI (Databricks CLI v0.239.0+)
 
