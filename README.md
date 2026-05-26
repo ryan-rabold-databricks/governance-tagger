@@ -35,20 +35,20 @@ internals visible. The audience is a domain steward, not a data engineer.
 This repo is a [Databricks Asset Bundle](https://docs.databricks.com/dev-tools/bundles/index.html).
 Two equivalent ways to deploy it — pick whichever fits your setup.
 
-### Prerequisite — choose your SQL warehouse
+### Prerequisites — workspace URL and SQL warehouse ID
 
-The bundle binds a SQL warehouse to the app at deploy time. The
-`sql_warehouse_id` variable in `databricks.yml` has a default that
-points at the warehouse this repo was originally deployed against. To
-target a different warehouse:
+Before deploying, you'll need two things:
 
-- In your workspace, go to **SQL Warehouses**, click the warehouse you
-  want to use, and copy its ID from the URL or details panel.
-- Then either edit the `sql_warehouse_id` default in `databricks.yml`,
-  or pass `--var sql_warehouse_id=<id>` on the CLI (Option B).
+1. **Your workspace URL** — e.g. `https://<your-workspace>.cloud.databricks.com`.
+2. **A SQL warehouse ID** — in your workspace, go to **SQL Warehouses**,
+   click the warehouse you want to use, and copy its ID from the URL
+   or details panel. The app SP is granted `CAN_USE` on this warehouse
+   automatically at deploy time.
 
-The app SP is granted `CAN_USE` on the chosen warehouse automatically
-at deploy time.
+Both flows below require you to put these values into `databricks.yml`
+(workspace host) and either `databricks.yml` or `--var` (warehouse ID).
+The defaults in the repo point at the workspace this repo was first
+deployed against and won't work for you unchanged.
 
 ### Option A — From the Databricks workspace UI (no local tools required)
 
@@ -56,8 +56,10 @@ at deploy time.
 2. Click **+ Add → Git Folder**. Paste the repo URL:
    `https://github.com/ryan-rabold-databricks/governance-tagger`
 3. Click **Create** — the workspace clones the repo.
-4. (Optional) If you want to target a different warehouse, open
-   `databricks.yml` and change the `sql_warehouse_id` default.
+4. Open `databricks.yml` and edit two values:
+   - Under `targets.dev.workspace`, set `host:` to your workspace URL.
+   - Under `variables.sql_warehouse_id`, change `default:` to your
+     SQL warehouse ID.
 5. Click `databricks.yml` to open the **Bundle** panel, then click
    **Deploy** and select the `dev` target.
 6. Once the deploy finishes, navigate to **Compute → Apps → governance-tagger**
