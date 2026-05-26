@@ -1,0 +1,21 @@
+command:
+  - "python"
+  - "-m"
+  - "uvicorn"
+  - "app:app"
+  - "--host"
+  - "0.0.0.0"
+  - "--port"
+  - "8000"
+
+env:
+  - name: APP_NAME
+    value: governance-tagger
+  - name: AUDIT_CATALOG
+    value: app_audit
+  - name: AUDIT_SCHEMA
+    value: app_security_logs
+  - name: AUDIT_TABLE
+    value: events
+  - name: DATABRICKS_WAREHOUSE_ID
+    value: "<your_warehouse_id>"
