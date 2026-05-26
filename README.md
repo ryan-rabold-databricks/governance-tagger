@@ -114,7 +114,6 @@ governance-tagger/
 ├── databricks.yml         # Databricks Asset Bundle root
 ├── resources/
 │   └── governance_tagger.app.yml   # App resource definition
-├── manifest.yaml          # App manifest (SQL warehouse resource_spec)
 ├── app.yaml               # App runtime config (command, env vars)
 ├── requirements.txt       # Python deps
 ├── app.py                 # FastAPI entry point (lifespan + SPA mount)

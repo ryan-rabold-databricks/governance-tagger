@@ -17,8 +17,15 @@ env:
     value: app_security_logs
   - name: AUDIT_TABLE
     value: events
-  # Warehouse is attached via manifest.yaml as a resource the customer
-  # wires up in the App UI on first deploy. `valueFrom` resolves to the
-  # warehouse ID at runtime.
+  # Resolves to the ID of the `sql-warehouse` resource declared in the
+  # bundle (resources/governance_tagger.app.yml). The bundle binds that
+  # resource to a concrete warehouse at deploy time via the
+  # `sql_warehouse_id` bundle variable.
   - name: DATABRICKS_WAREHOUSE_ID
     valueFrom: "sql-warehouse"
+
+# OAuth scopes the end user authorizes on first load. The app calls
+# the SQL warehouse on-behalf-of-user (X-Forwarded-Access-Token), so
+# the token must carry the `sql` scope.
+user_api_scopes:
+  - sql
