@@ -35,13 +35,20 @@ internals visible. The audience is a domain steward, not a data engineer.
 This repo is a [Databricks Asset Bundle](https://docs.databricks.com/dev-tools/bundles/index.html).
 Two equivalent ways to deploy it — pick whichever fits your setup.
 
-### Prerequisite — find your SQL warehouse ID
+### Prerequisite — choose your SQL warehouse
 
-Both deploy paths need the ID of an existing SQL warehouse. In your
-workspace, go to **SQL Warehouses**, click the warehouse you want to
-use, and copy the ID from the URL or the details panel
-(e.g. `5a3e1a5cfdf513f1`). The app SP will be granted `CAN_USE` on it
-automatically at deploy time.
+The bundle binds a SQL warehouse to the app at deploy time. The
+`sql_warehouse_id` variable in `databricks.yml` has a default that
+points at the warehouse this repo was originally deployed against. To
+target a different warehouse:
+
+- In your workspace, go to **SQL Warehouses**, click the warehouse you
+  want to use, and copy its ID from the URL or details panel.
+- Then either edit the `sql_warehouse_id` default in `databricks.yml`,
+  or pass `--var sql_warehouse_id=<id>` on the CLI (Option B).
+
+The app SP is granted `CAN_USE` on the chosen warehouse automatically
+at deploy time.
 
 ### Option A — From the Databricks workspace UI (no local tools required)
 
@@ -49,10 +56,10 @@ automatically at deploy time.
 2. Click **+ Add → Git Folder**. Paste the repo URL:
    `https://github.com/ryan-rabold-databricks/governance-tagger`
 3. Click **Create** — the workspace clones the repo.
-4. Open the cloned folder and click the `databricks.yml` file. A **Bundle**
-   panel appears. Open the **Variables** tab and set
-   `sql_warehouse_id` to the warehouse ID from the prerequisite step.
-5. Click **Deploy** and select the `dev` target.
+4. (Optional) If you want to target a different warehouse, open
+   `databricks.yml` and change the `sql_warehouse_id` default.
+5. Click `databricks.yml` to open the **Bundle** panel, then click
+   **Deploy** and select the `dev` target.
 6. Once the deploy finishes, navigate to **Compute → Apps → governance-tagger**
    and click **Start**. First start can take 1–2 minutes while the
    workspace materializes the env vars and installs `requirements.txt`.
@@ -67,9 +74,12 @@ cd governance-tagger
 # 2. Edit databricks.yml: set workspace.host to your workspace URL,
 #    or remove the line entirely if you've configured a default profile.
 
-# 3. Validate + deploy (supply the warehouse ID via --var)
-databricks bundle validate -t dev --var "sql_warehouse_id=<your-warehouse-id>"
-databricks bundle deploy   -t dev --var "sql_warehouse_id=<your-warehouse-id>"
+# 3. Validate + deploy. The sql_warehouse_id variable has a default —
+#    pass --var only if you want to target a different warehouse.
+databricks bundle validate -t dev
+databricks bundle deploy   -t dev
+#    e.g. to override:
+#    databricks bundle deploy -t dev --var "sql_warehouse_id=<your-warehouse-id>"
 
 # 4. Start the app (DAB doesn't auto-start Apps resources)
 databricks bundle run governance_tagger -t dev
